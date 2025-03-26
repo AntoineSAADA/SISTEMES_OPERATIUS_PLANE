@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks; // Pour utiliser Task et async/await
 using System.Windows.Forms;
 
 namespace ClientApp
@@ -75,7 +76,8 @@ namespace ClientApp
                 FlatStyle = FlatStyle.System,
                 UseVisualStyleBackColor = true
             };
-            btnLogin.Click += BtnLogin_Click;
+            // Rendre l'événement asynchrone
+            btnLogin.Click += async (sender, e) => await BtnLogin_Click(sender, e);
 
             // Lien pour s'inscrire (utilise LinkClicked au lieu de Click)
             linkRegister = new LinkLabel
@@ -95,7 +97,8 @@ namespace ClientApp
             this.Controls.Add(linkRegister);
         }
 
-        private void BtnLogin_Click(object sender, EventArgs e)
+        // Méthode asynchrone pour la gestion du clic sur Login
+        private async Task BtnLogin_Click(object sender, EventArgs e)
         {
             string email = txtEmail.Text.Trim();
             string password = txtPassword.Text.Trim();
@@ -121,14 +124,15 @@ namespace ClientApp
                 return;
             }
 
-            // Envoyer la commande LOGIN avec la connexion persistante
+            // Envoyer la commande LOGIN avec la connexion persistante de manière asynchrone
             string message = $"LOGIN:{email}:{password}";
-            string response = SendMessageToServerWithClient(persistentClient, message);
+            string response = await SendMessageToServerWithClientAsync(persistentClient, message);
 
+            // Après un login réussi
             if (response.Contains("Login successful"))
             {
-                // Connexion réussie, passez la connexion persistante à QueriesForm
-                QueriesForm queriesForm = new QueriesForm(SERVER_IP, SERVER_PORT, persistentClient);
+                // Connexion réussie, passe la connexion persistante à QueriesForm
+                QueriesForm queriesForm = new QueriesForm(persistentClient);
                 queriesForm.Show();
                 this.Hide();
             }
@@ -142,17 +146,21 @@ namespace ClientApp
             }
         }
 
-        // Méthode pour envoyer un message avec une connexion existante
-        private string SendMessageToServerWithClient(TcpClient client, string message)
+        // Méthode pour envoyer un message avec une connexion existante, en mode asynchrone
+        private async Task<string> SendMessageToServerWithClientAsync(TcpClient client, string message)
         {
             try
             {
                 NetworkStream stream = client.GetStream();
                 byte[] data = Encoding.UTF8.GetBytes(message);
-                stream.Write(data, 0, data.Length);
 
+                // Écriture asynchrone
+                await stream.WriteAsync(data, 0, data.Length);
+
+                // Lecture asynchrone
                 byte[] buffer = new byte[1024];
-                int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+
                 return Encoding.UTF8.GetString(buffer, 0, bytesRead);
             }
             catch (Exception ex)

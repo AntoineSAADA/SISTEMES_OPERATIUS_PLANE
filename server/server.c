@@ -1,3 +1,5 @@
+//gcc server.c -o server
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +36,7 @@ void queryOne(MYSQL *conn, int client_socket);
 void queryTwo(MYSQL *conn, int client_socket);
 void queryThree(MYSQL *conn, int client_socket);
 
-// Our new commands to manage the global player list
+// New commands to manage the global player list
 void addConnectedPlayer(const char *username);
 void removeConnectedPlayer(const char *username);
 void getConnectedPlayersList(char *outBuffer, int outBufferSize);
@@ -120,9 +122,13 @@ void *handleClient(void *arg) {
         memset(buffer, 0, sizeof(buffer));
         int bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
         if (bytes_read <= 0) {
-            // Client disconnected unexpectedly
+            // Client disconnected unexpectedly.
             printf("Client disconnected unexpectedly.\n");
-            // Ne pas appeler removeConnectedPlayer() ici
+            // Si le client était loggué, retirer le joueur de la liste.
+            if (loggedIn) {
+                removeConnectedPlayer(currentUser);
+                printf("[DEBUG] Player forcibly disconnected: %s\n", currentUser);
+            }
             close(client_socket);
             mysql_close(conn);
             return NULL;
@@ -243,7 +249,7 @@ void removeConnectedPlayer(const char *username) {
 
     for (int i = 0; i < g_numPlayers; i++) {
         if (strncmp(g_connectedPlayers[i], username, USERNAME_LEN) == 0) {
-            // shift everyone down
+            // Shift everyone down
             for (int j = i; j < g_numPlayers - 1; j++) {
                 strcpy(g_connectedPlayers[j], g_connectedPlayers[j + 1]);
             }

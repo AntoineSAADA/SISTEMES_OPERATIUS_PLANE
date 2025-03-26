@@ -10,18 +10,14 @@ namespace ClientApp
     {
         private Button btnQuery1, btnQuery2, btnQuery3, btnLogout, btnGetPlayers;
         private TextBox txtResponse;
-        private string serverIP;
-        private int serverPort;
 
         // Connexion persistante
         private TcpClient persistentClient;
         private NetworkStream stream;
 
-        // Nouveau constructeur recevant le TcpClient persistant
-        public QueriesForm(string ip, int port, TcpClient client)
+        // Constructeur recevant le TcpClient persistant
+        public QueriesForm(TcpClient client)
         {
-            this.serverIP = ip;
-            this.serverPort = port;
             this.persistentClient = client;
             this.stream = client.GetStream();
 
@@ -101,7 +97,6 @@ namespace ClientApp
             btnGetPlayers.FlatAppearance.BorderSize = 1;
             btnGetPlayers.Click += BtnGetPlayers_Click;
 
-            // Bouton Logout
             btnLogout = new Button
             {
                 Text = "Logout",
@@ -177,7 +172,6 @@ namespace ClientApp
             txtResponse.Text = response;
         }
 
-        // Lors du clic sur Logout, on envoie la commande LOGOUT, puis on ferme la connexion
         private void BtnLogout_Click(object sender, EventArgs e)
         {
             string response = SendMessageToServer("LOGOUT");
