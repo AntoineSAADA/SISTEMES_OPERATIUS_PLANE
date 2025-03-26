@@ -8,18 +8,21 @@ namespace ClientApp
 {
     public class QueriesForm : Form
     {
-        private Button btnQuery1, btnQuery2, btnQuery3, btnDisconnect;
+        private Button btnQuery1, btnQuery2, btnQuery3, btnLogout, btnGetPlayers;
         private TextBox txtResponse;
-        private string serverIP;
-        private int serverPort;
 
-        public QueriesForm(string ip, int port)
+        // Connexion persistante
+        private TcpClient persistentClient;
+        private NetworkStream stream;
+
+        // Constructeur recevant le TcpClient persistant
+        public QueriesForm(TcpClient client)
         {
-            this.serverIP = ip;
-            this.serverPort = port;
+            this.persistentClient = client;
+            this.stream = client.GetStream();
 
             this.Text = "Queries";
-            this.Size = new Size(500, 350);
+            this.Size = new Size(600, 400);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -80,11 +83,24 @@ namespace ClientApp
             btnQuery3.FlatAppearance.BorderSize = 1;
             btnQuery3.Click += BtnQuery3_Click;
 
-            // Bouton de déconnexion
-            btnDisconnect = new Button
+            btnGetPlayers = new Button
+            {
+                Text = "GET PLAYERS",
+                Location = new Point(380, 60),
+                Width = 100,
+                Height = 40,
+                BackColor = Color.LightYellow,
+                ForeColor = Color.Black,
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = false
+            };
+            btnGetPlayers.FlatAppearance.BorderSize = 1;
+            btnGetPlayers.Click += BtnGetPlayers_Click;
+
+            btnLogout = new Button
             {
                 Text = "Logout",
-                Location = new Point(380, 60),
+                Location = new Point(500, 60),
                 Width = 80,
                 Height = 40,
                 BackColor = Color.LightCoral,
@@ -92,15 +108,15 @@ namespace ClientApp
                 FlatStyle = FlatStyle.Flat,
                 UseVisualStyleBackColor = false
             };
-            btnDisconnect.FlatAppearance.BorderSize = 1;
-            btnDisconnect.Click += BtnDisconnect_Click;
+            btnLogout.FlatAppearance.BorderSize = 1;
+            btnLogout.Click += BtnLogout_Click;
 
             txtResponse = new TextBox
             {
                 Multiline = true,
                 Location = new Point(20, 120),
-                Width = 440,
-                Height = 150,
+                Width = 560,
+                Height = 200,
                 ScrollBars = ScrollBars.Vertical,
                 BackColor = Color.White,
                 ForeColor = Color.Black
@@ -110,8 +126,26 @@ namespace ClientApp
             this.Controls.Add(btnQuery1);
             this.Controls.Add(btnQuery2);
             this.Controls.Add(btnQuery3);
-            this.Controls.Add(btnDisconnect);
+            this.Controls.Add(btnGetPlayers);
+            this.Controls.Add(btnLogout);
             this.Controls.Add(txtResponse);
+        }
+
+        private string SendMessageToServer(string message)
+        {
+            try
+            {
+                byte[] data = Encoding.UTF8.GetBytes(message);
+                stream.Write(data, 0, data.Length);
+
+                byte[] buffer = new byte[1024];
+                int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                return Encoding.UTF8.GetString(buffer, 0, bytesRead);
+            }
+            catch (Exception ex)
+            {
+                return $"Error: {ex.Message}";
+            }
         }
 
         private void BtnQuery1_Click(object sender, EventArgs e)
@@ -132,33 +166,21 @@ namespace ClientApp
             txtResponse.Text = response;
         }
 
-        // Bouton de déconnexion : retourne à la fenêtre de Login
-        private void BtnDisconnect_Click(object sender, EventArgs e)
+        private void BtnGetPlayers_Click(object sender, EventArgs e)
         {
+            string response = SendMessageToServer("GET_PLAYERS");
+            txtResponse.Text = response;
+        }
+
+        private void BtnLogout_Click(object sender, EventArgs e)
+        {
+            string response = SendMessageToServer("LOGOUT");
+            MessageBox.Show(response, "Logout");
+            stream.Close();
+            persistentClient.Close();
             LoginForm loginForm = new LoginForm();
             loginForm.Show();
             this.Close();
-        }
-
-        private string SendMessageToServer(string message)
-        {
-            try
-            {
-                using (TcpClient client = new TcpClient(serverIP, serverPort))
-                using (NetworkStream stream = client.GetStream())
-                {
-                    byte[] data = Encoding.UTF8.GetBytes(message);
-                    stream.Write(data, 0, data.Length);
-
-                    byte[] buffer = new byte[1024];
-                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                    return Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                }
-            }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
-            }
         }
     }
 }
