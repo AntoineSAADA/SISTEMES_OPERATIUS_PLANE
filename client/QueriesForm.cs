@@ -1,186 +1,159 @@
 using System;
-using System.Drawing;
 using System.Net.Sockets;
-using System.Text;
+using System.IO;
+using System.Threading;
 using System.Windows.Forms;
+using System.Drawing;
 
-namespace ClientApp
+namespace MultiplayerGameClient
 {
     public class QueriesForm : Form
     {
-        private Button btnQuery1, btnQuery2, btnQuery3, btnLogout, btnGetPlayers;
-        private TextBox txtResponse;
+        private ListBox lstPlayers;
+        private TextBox txtResults;
+        private Button btnQuery1, btnQuery2, btnQuery3, btnLogout;
 
-        // Connexion persistante
-        private TcpClient persistentClient;
-        private NetworkStream stream;
+        private TcpClient client;
+        private StreamReader reader;
+        private StreamWriter writer;
+        private Thread listenThread;
+        private volatile bool keepListening = true;
+        private string username;
 
-        // Constructeur recevant le TcpClient persistant
-        public QueriesForm(TcpClient client)
+        public QueriesForm(TcpClient client, StreamReader reader, StreamWriter writer, string username)
         {
-            this.persistentClient = client;
-            this.stream = client.GetStream();
+            this.client = client;
+            this.reader = reader;
+            this.writer = writer;
+            this.username = username;
+            InitializeComponent();
+            StartListening();
+        }
 
-            this.Text = "Queries";
-            this.Size = new Size(600, 400);
+        private void InitializeComponent()
+        {
+            this.Text = "Interface Principale";
+            this.Size = new Size(800, 500);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
+            this.BackColor = Color.LightGray;
 
-            InitializeComponents();
-        }
+            Label lblTitle = new Label();
+            lblTitle.Text = "Interface de jeu - Bienvenue " + username;
+            lblTitle.Font = new Font("Segoe UI", 14, FontStyle.Bold);
+            lblTitle.AutoSize = true;
+            lblTitle.Location = new Point(20, 20);
 
-        private void InitializeComponents()
-        {
-            Label lblTitle = new Label
-            {
-                Text = "Welcome! You can run queries below:",
-                Location = new Point(20, 20),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                ForeColor = Color.Black
-            };
+            lstPlayers = new ListBox();
+            lstPlayers.Location = new Point(20, 60);
+            lstPlayers.Size = new Size(200, 380);
 
-            btnQuery1 = new Button
-            {
-                Text = "QUERY1",
-                Location = new Point(20, 60),
-                Width = 100,
-                Height = 40,
-                BackColor = Color.WhiteSmoke,
-                ForeColor = Color.Black,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            btnQuery1.FlatAppearance.BorderSize = 1;
-            btnQuery1.Click += BtnQuery1_Click;
+            txtResults = new TextBox();
+            txtResults.Location = new Point(240, 60);
+            txtResults.Size = new Size(520, 300);
+            txtResults.Multiline = true;
+            txtResults.ScrollBars = ScrollBars.Vertical;
 
-            btnQuery2 = new Button
-            {
-                Text = "QUERY2",
-                Location = new Point(140, 60),
-                Width = 100,
-                Height = 40,
-                BackColor = Color.WhiteSmoke,
-                ForeColor = Color.Black,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            btnQuery2.FlatAppearance.BorderSize = 1;
-            btnQuery2.Click += BtnQuery2_Click;
+            btnQuery1 = new Button();
+            btnQuery1.Text = "QUERY1";
+            btnQuery1.Location = new Point(240, 380);
+            btnQuery1.Size = new Size(100, 40);
+            btnQuery1.Click += btnQuery1_Click;
 
-            btnQuery3 = new Button
-            {
-                Text = "QUERY3",
-                Location = new Point(260, 60),
-                Width = 100,
-                Height = 40,
-                BackColor = Color.WhiteSmoke,
-                ForeColor = Color.Black,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            btnQuery3.FlatAppearance.BorderSize = 1;
-            btnQuery3.Click += BtnQuery3_Click;
+            btnQuery2 = new Button();
+            btnQuery2.Text = "QUERY2";
+            btnQuery2.Location = new Point(360, 380);
+            btnQuery2.Size = new Size(100, 40);
+            btnQuery2.Click += btnQuery2_Click;
 
-            btnGetPlayers = new Button
-            {
-                Text = "GET PLAYERS",
-                Location = new Point(380, 60),
-                Width = 100,
-                Height = 40,
-                BackColor = Color.LightYellow,
-                ForeColor = Color.Black,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            btnGetPlayers.FlatAppearance.BorderSize = 1;
-            btnGetPlayers.Click += BtnGetPlayers_Click;
+            btnQuery3 = new Button();
+            btnQuery3.Text = "QUERY3";
+            btnQuery3.Location = new Point(480, 380);
+            btnQuery3.Size = new Size(100, 40);
+            btnQuery3.Click += btnQuery3_Click;
 
-            btnLogout = new Button
-            {
-                Text = "Logout",
-                Location = new Point(500, 60),
-                Width = 80,
-                Height = 40,
-                BackColor = Color.LightCoral,
-                ForeColor = Color.Black,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            btnLogout.FlatAppearance.BorderSize = 1;
-            btnLogout.Click += BtnLogout_Click;
-
-            txtResponse = new TextBox
-            {
-                Multiline = true,
-                Location = new Point(20, 120),
-                Width = 560,
-                Height = 200,
-                ScrollBars = ScrollBars.Vertical,
-                BackColor = Color.White,
-                ForeColor = Color.Black
-            };
+            btnLogout = new Button();
+            btnLogout.Text = "LOGOUT";
+            btnLogout.Location = new Point(600, 380);
+            btnLogout.Size = new Size(100, 40);
+            btnLogout.Click += btnLogout_Click;
 
             this.Controls.Add(lblTitle);
+            this.Controls.Add(lstPlayers);
+            this.Controls.Add(txtResults);
             this.Controls.Add(btnQuery1);
             this.Controls.Add(btnQuery2);
             this.Controls.Add(btnQuery3);
-            this.Controls.Add(btnGetPlayers);
             this.Controls.Add(btnLogout);
-            this.Controls.Add(txtResponse);
         }
 
-        private string SendMessageToServer(string message)
+        private void StartListening()
         {
-            try
-            {
-                byte[] data = Encoding.UTF8.GetBytes(message);
-                stream.Write(data, 0, data.Length);
+            listenThread = new Thread(ListenLoop);
+            listenThread.IsBackground = true;
+            listenThread.Start();
+        }
 
-                byte[] buffer = new byte[1024];
-                int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                return Encoding.UTF8.GetString(buffer, 0, bytesRead);
+        private void ListenLoop()
+        {
+            try {
+                string message;
+                while (keepListening && (message = reader.ReadLine()) != null) {
+                    if (message.StartsWith("UPDATE_LIST:")) {
+                        string list = message.Substring("UPDATE_LIST:".Length);
+                        string[] players = list.Split(new char[] {','}, StringSplitOptions.RemoveEmptyEntries);
+                        this.Invoke((MethodInvoker) delegate {
+                            lstPlayers.Items.Clear();
+                            foreach (string p in players) {
+                                lstPlayers.Items.Add(p.Trim());
+                            }
+                        });
+                    }
+                    else if (message.StartsWith("QUERY1_RESULT:") ||
+                             message.StartsWith("QUERY2_RESULT:") ||
+                             message.StartsWith("QUERY3_RESULT:"))
+                    {
+                        this.Invoke((MethodInvoker) delegate {
+                            // Optionnel: si on veut remplacer les " | " par des retours à la ligne
+                            // string display = message.Replace(" | ", "\r\n");
+                            // txtResults.Text = display;
+                            
+                            // Sinon, on met tout tel quel
+                            txtResults.Text = message;
+                        });
+                    }
+                }
             }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
+            catch (IOException) {
+                // La connexion a été fermée.
             }
         }
 
-        private void BtnQuery1_Click(object sender, EventArgs e)
+        private void btnQuery1_Click(object sender, EventArgs e)
         {
-            string response = SendMessageToServer("QUERY1");
-            txtResponse.Text = response;
+            try { writer.WriteLine("QUERY1"); } catch { }
         }
-
-        private void BtnQuery2_Click(object sender, EventArgs e)
+        private void btnQuery2_Click(object sender, EventArgs e)
         {
-            string response = SendMessageToServer("QUERY2");
-            txtResponse.Text = response;
+            try { writer.WriteLine("QUERY2"); } catch { }
         }
-
-        private void BtnQuery3_Click(object sender, EventArgs e)
+        private void btnQuery3_Click(object sender, EventArgs e)
         {
-            string response = SendMessageToServer("QUERY3");
-            txtResponse.Text = response;
+            try { writer.WriteLine("QUERY3"); } catch { }
         }
-
-        private void BtnGetPlayers_Click(object sender, EventArgs e)
+        private void btnLogout_Click(object sender, EventArgs e)
         {
-            string response = SendMessageToServer("GET_PLAYERS");
-            txtResponse.Text = response;
+            try { writer.WriteLine("LOGOUT"); } catch { }
+            keepListening = false;
+            client.Close();
+            Application.Exit();
         }
-
-        private void BtnLogout_Click(object sender, EventArgs e)
+        protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            string response = SendMessageToServer("LOGOUT");
-            MessageBox.Show(response, "Logout");
-            stream.Close();
-            persistentClient.Close();
-            LoginForm loginForm = new LoginForm();
-            loginForm.Show();
-            this.Close();
+            keepListening = false;
+            client.Close();
+            base.OnFormClosing(e);
         }
     }
 }

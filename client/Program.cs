@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Forms;
 
-namespace ClientApp
+namespace MultiplayerGameClient
 {
     static class Program
     {
@@ -10,7 +10,6 @@ namespace ClientApp
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            // On démarre sur la page de connexion
             Application.Run(new LoginForm());
         }
     }
