@@ -1,9 +1,11 @@
+//  QueriesForm.cs – v4 (invitation support, layout corrigé, compatible C# 7.x)
 using System;
-using System.Net.Sockets;
+using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
+using System.Net.Sockets;
 using System.Threading;
 using System.Windows.Forms;
-using System.Drawing;
 
 namespace MultiplayerGameClient
 {
@@ -11,148 +13,180 @@ namespace MultiplayerGameClient
     {
         private ListBox lstPlayers;
         private TextBox txtResults;
-        private Button btnQuery1, btnQuery2, btnQuery3, btnLogout;
+        private Button  btnQuery1, btnQuery2, btnQuery3, btnInvite, btnLogout;
 
-        private TcpClient client;
-        private StreamReader reader;
-        private StreamWriter writer;
-        private Thread listenThread;
+        private readonly TcpClient    client;
+        private readonly StreamReader reader;
+        private readonly StreamWriter writer;
+        private Thread   listenThread;
         private volatile bool keepListening = true;
-        private string username;
+        private readonly string username;
 
-        public QueriesForm(TcpClient client, StreamReader reader, StreamWriter writer, string username)
+        public QueriesForm(TcpClient c, StreamReader r, StreamWriter w, string user)
         {
-            this.client = client;
-            this.reader = reader;
-            this.writer = writer;
-            this.username = username;
+            client = c; reader = r; writer = w; username = user;
             InitializeComponent();
             StartListening();
         }
 
         private void InitializeComponent()
         {
-            this.Text = "Interface Principale";
-            this.Size = new Size(800, 500);
-            this.StartPosition = FormStartPosition.CenterScreen;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.BackColor = Color.LightGray;
+            Text           = "Game Interface";
+            Size           = new Size(900, 520);
+            FormBorderStyle= FormBorderStyle.FixedDialog;
+            MaximizeBox    = false;
+            BackColor      = Color.LightGray;
+            StartPosition  = FormStartPosition.CenterScreen;
 
-            Label lblTitle = new Label();
-            lblTitle.Text = "Interface de jeu - Bienvenue " + username;
-            lblTitle.Font = new Font("Segoe UI", 14, FontStyle.Bold);
-            lblTitle.AutoSize = true;
-            lblTitle.Location = new Point(20, 20);
+            var lblTitle = new Label {
+                Text = $"Welcome {username}",
+                Font = new Font("Segoe UI", 14, FontStyle.Bold),
+                AutoSize = true,
+                Location = new Point(20, 20)
+            };
 
-            lstPlayers = new ListBox();
-            lstPlayers.Location = new Point(20, 60);
-            lstPlayers.Size = new Size(200, 380);
+            lstPlayers = new ListBox {
+                Location = new Point(20, 60),
+                Size     = new Size(200, 380),
+                SelectionMode = SelectionMode.MultiExtended
+            };
 
-            txtResults = new TextBox();
-            txtResults.Location = new Point(240, 60);
-            txtResults.Size = new Size(520, 300);
-            txtResults.Multiline = true;
-            txtResults.ScrollBars = ScrollBars.Vertical;
+            txtResults = new TextBox {
+                Location = new Point(240, 60),
+                Size     = new Size(620, 300),
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical
+            };
 
-            btnQuery1 = new Button();
-            btnQuery1.Text = "QUERY1";
-            btnQuery1.Location = new Point(240, 380);
-            btnQuery1.Size = new Size(100, 40);
-            btnQuery1.Click += btnQuery1_Click;
+            int yButtons = 380;
 
-            btnQuery2 = new Button();
-            btnQuery2.Text = "QUERY2";
-            btnQuery2.Location = new Point(360, 380);
-            btnQuery2.Size = new Size(100, 40);
-            btnQuery2.Click += btnQuery2_Click;
+            btnQuery1 = new Button {
+                Text = "QUERY1", Location = new Point(240, yButtons), Size = new Size(100, 40)
+            }; btnQuery1.Click += (s, e) => SendCommand("QUERY1");
 
-            btnQuery3 = new Button();
-            btnQuery3.Text = "QUERY3";
-            btnQuery3.Location = new Point(480, 380);
-            btnQuery3.Size = new Size(100, 40);
-            btnQuery3.Click += btnQuery3_Click;
+            btnQuery2 = new Button {
+                Text = "QUERY2", Location = new Point(360, yButtons), Size = new Size(100, 40)
+            }; btnQuery2.Click += (s, e) => SendCommand("QUERY2");
 
-            btnLogout = new Button();
-            btnLogout.Text = "LOGOUT";
-            btnLogout.Location = new Point(600, 380);
-            btnLogout.Size = new Size(100, 40);
-            btnLogout.Click += btnLogout_Click;
+            btnQuery3 = new Button {
+                Text = "QUERY3", Location = new Point(480, yButtons), Size = new Size(100, 40)
+            }; btnQuery3.Click += (s, e) => SendCommand("QUERY3");
 
-            this.Controls.Add(lblTitle);
-            this.Controls.Add(lstPlayers);
-            this.Controls.Add(txtResults);
-            this.Controls.Add(btnQuery1);
-            this.Controls.Add(btnQuery2);
-            this.Controls.Add(btnQuery3);
-            this.Controls.Add(btnLogout);
+            btnInvite = new Button {
+                Text = "INVITE", Location = new Point(600, yButtons), Size = new Size(100, 40)
+            }; btnInvite.Click += btnInvite_Click;
+
+            btnLogout = new Button {
+                Text = "LOGOUT", Location = new Point(720, yButtons), Size = new Size(100, 40)
+            }; btnLogout.Click += btnLogout_Click;
+
+            Controls.AddRange(new Control[] {
+                lblTitle, lstPlayers, txtResults,
+                btnQuery1, btnQuery2, btnQuery3, btnInvite, btnLogout
+            });
         }
 
+        private void SendCommand(string cmd) { try { writer.WriteLine(cmd); } catch { } }
+
+        /* ----------  network listener ---------- */
         private void StartListening()
         {
-            listenThread = new Thread(ListenLoop);
-            listenThread.IsBackground = true;
+            listenThread = new Thread(ListenLoop) { IsBackground = true };
             listenThread.Start();
         }
-
         private void ListenLoop()
         {
             try {
-                string message;
-                while (keepListening && (message = reader.ReadLine()) != null) {
-                    if (message.StartsWith("UPDATE_LIST:")) {
-                        string list = message.Substring("UPDATE_LIST:".Length);
-                        string[] players = list.Split(new char[] {','}, StringSplitOptions.RemoveEmptyEntries);
-                        this.Invoke((MethodInvoker) delegate {
+                string line;
+                while (keepListening && (line = reader.ReadLine()) != null) {
+                    if (line.StartsWith("UPDATE_LIST:")) {
+                        string[] players = line.Substring(12)
+                                               .Split(new[] { ',' },
+                                                      StringSplitOptions.RemoveEmptyEntries);
+                        BeginInvoke((MethodInvoker)delegate {
                             lstPlayers.Items.Clear();
-                            foreach (string p in players) {
-                                lstPlayers.Items.Add(p.Trim());
-                            }
+                            foreach (string p in players) lstPlayers.Items.Add(p.Trim());
                         });
                     }
-                    else if (message.StartsWith("QUERY1_RESULT:") ||
-                             message.StartsWith("QUERY2_RESULT:") ||
-                             message.StartsWith("QUERY3_RESULT:"))
-                    {
-                        this.Invoke((MethodInvoker) delegate {
-                            // Optionnel: si on veut remplacer les " | " par des retours à la ligne
-                            // string display = message.Replace(" | ", "\r\n");
-                            // txtResults.Text = display;
-                            
-                            // Sinon, on met tout tel quel
-                            txtResults.Text = message;
-                        });
+                    else if (line.StartsWith("QUERY")) {
+                        BeginInvoke((MethodInvoker)(() => txtResults.Text = line));
                     }
+                    else if (line.StartsWith("INVITE_REQUEST:"))
+                        HandleInviteRequest(line.Substring(15));
+                    else if (line.StartsWith("INVITE_RESULT:"))
+                        HandleInviteResult(line.Substring(14));
                 }
             }
-            catch (IOException) {
-                // La connexion a été fermée.
-            }
+            catch (IOException) { /* connexion coupée */ }
         }
 
-        private void btnQuery1_Click(object sender, EventArgs e)
+        /* ----------  invitation handlers ---------- */
+        private void HandleInviteRequest(string payload)
         {
-            try { writer.WriteLine("QUERY1"); } catch { }
+            // format "inviter:invitee1,invitee2,…"
+            string[] parts = payload.Split(':');
+            if (parts.Length < 2) return;
+            string inviter = parts[0];
+            string[] invites = parts[1].Split(',');
+
+            if (!Array.Exists(invites, p => p == username)) return;
+
+            BeginInvoke((MethodInvoker)delegate {
+                DialogResult dlg = MessageBox.Show(
+                    $"{inviter} invites you to play.\nAccept?",
+                    "Game invitation",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                string reply = dlg == DialogResult.Yes ? "ACCEPT" : "REJECT";
+                try { writer.WriteLine($"INVITE_RESP:{inviter}:{reply}"); } catch { }
+            });
         }
-        private void btnQuery2_Click(object sender, EventArgs e)
+        private void HandleInviteResult(string payload)
         {
-            try { writer.WriteLine("QUERY2"); } catch { }
+            // format "inviter:ACCEPTED/REJECTED"
+            string[] parts = payload.Split(':');
+            if (parts.Length < 2) return;
+            string inviter = parts[0], result = parts[1];
+
+            BeginInvoke((MethodInvoker)delegate {
+                MessageBox.Show(
+                    result == "ACCEPTED"
+                        ? $"Game with {inviter} will start – everyone accepted!"
+                        : $"Game with {inviter} was cancelled – someone declined.",
+                    "Invitation result",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            });
         }
-        private void btnQuery3_Click(object sender, EventArgs e)
+
+        /* ----------  UI events ---------- */
+        private void btnInvite_Click(object sender, EventArgs e)
         {
-            try { writer.WriteLine("QUERY3"); } catch { }
+            if (lstPlayers.SelectedItems.Count == 0) {
+                MessageBox.Show("Select at least one player."); return;
+            }
+            var targets = new List<string>();
+            foreach (var item in lstPlayers.SelectedItems) {
+                string p = item.ToString();
+                if (p != username) targets.Add(p);
+            }
+            if (targets.Count == 0) {
+                MessageBox.Show("You can’t invite only yourself."); return;
+            }
+            string csv = string.Join(",", targets);
+            try { writer.WriteLine($"INVITE:{csv}"); } catch { }
+            MessageBox.Show("Invitation sent.");
         }
+
         private void btnLogout_Click(object sender, EventArgs e)
         {
-            try { writer.WriteLine("LOGOUT"); } catch { }
             keepListening = false;
+            SendCommand("LOGOUT");
             client.Close();
             Application.Exit();
         }
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            keepListening = false;
-            client.Close();
+            keepListening = false; client.Close();
             base.OnFormClosing(e);
         }
     }
