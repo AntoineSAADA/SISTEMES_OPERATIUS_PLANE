@@ -1,11 +1,11 @@
 /* ------------------------------------------------------------------
- *  server.c  – Multiplayer game server (v4 – invitation protocol)
+ *  server.c  – Multiplayer game server (v5 : chat + move + parties)
  * ------------------------------------------------------------------
- *  ‑ C socket server
- *  ‑ MySQL back‑end
- *  ‑ Tracks connected players and broadcasts list
- *  ‑ Supports three example SQL queries
- *  ‑ NEW in v4:  user‑to‑user invitation workflow
+ *  ↳  Base : votre v4 (invitation protocol) conservée intégralement
+ *  ↳  Ajouts v5 :
+ *        • mappage socket⇆username pour adresser un joueur
+ *        • structure Game + lancement auto quand tout le monde accepte
+ *        • commandes CHAT et MOVE diffusées aux joueurs de la partie
  * ------------------------------------------------------------------ */
 
  #include <stdio.h>
@@ -26,9 +26,11 @@
  #define USERNAME_LEN    50
  
  #define MAX_CLIENTS     100
+ #define MAX_INVITES     50        /* simultaneous invitations    */
  
- /* invitation limits */
- #define MAX_INVITES     50         /* simultaneous invitations    */
+ /* === v5 ADD >>> */
+ #define MAX_GAMES       20
+ /* <<< v5 ADD === */
  
  /* -------------------------  invitation structure -------------- */
  typedef struct
@@ -40,18 +42,34 @@
      int  responses[MAX_PLAYERS];                   /* 0 pend /1 ok/-1 no */
  } Invitation;
  
+ /* === v5 ADD >>> */
+ typedef struct
+ {
+     int  active;
+     char players[MAX_PLAYERS][USERNAME_LEN];
+     int  numPlayers;
+ } Game;
+ /* <<< v5 ADD === */
+ 
  /* -------------------------  globals --------------------------- */
  pthread_mutex_t g_mutex        = PTHREAD_MUTEX_INITIALIZER; /* player list  */
  pthread_mutex_t g_clientsMutex = PTHREAD_MUTEX_INITIALIZER; /* socket list  */
  pthread_mutex_t g_inviteMutex  = PTHREAD_MUTEX_INITIALIZER; /* invitations  */
+ /* === v5 ADD >>> */ pthread_mutex_t g_gameMutex = PTHREAD_MUTEX_INITIALIZER; /* games */
+ /* <<< v5 ADD === */
  
  char g_connectedPlayers[MAX_PLAYERS][USERNAME_LEN];
- int  g_numPlayers  = 0;
+ int  g_numPlayers = 0;
  
+ /* sockets */
  int  g_clientSockets[MAX_CLIENTS];
+ /* === v5 ADD >>> */
+ char g_socketUsers[MAX_CLIENTS][USERNAME_LEN];  /* "" tant que pas loggé */
+ /* <<< v5 ADD === */
  int  g_clientCount = 0;
  
  Invitation g_invites[MAX_INVITES] = {0};
+ /* === v5 ADD >>> */ Game g_games[MAX_GAMES] = {0}; /* <<< v5 ADD === */
  
  /* -------------------------  DB connection data ---------------- */
  const char *DB_HOST = "localhost";
@@ -78,6 +96,13 @@
  void addClientSocket(int);
  void removeClientSocket(int);
  void broadcastMessage(const char *msg);
+ 
+ /* === v5 ADD >>> */
+ void setSocketUsername(int,const char*);
+ int  socketFromUsername(const char*);
+ int  findGameByPlayer(const char*);
+ void startGame(Invitation*);
+ /* <<< v5 ADD === */
  
  /* invitations */
  static int findInviteSlotByInviter(const char *);
@@ -107,9 +132,8 @@
  
      if (bind(server_sock, (struct sockaddr *) &server_addr,
               sizeof(server_addr)) < 0)
-     {
-         perror("bind"); exit(EXIT_FAILURE);
-     }
+     { perror("bind"); exit(EXIT_FAILURE); }
+ 
      if (listen(server_sock, 10) < 0) { perror("listen"); exit(EXIT_FAILURE); }
  
      printf("Server listening on port %d …\n", PORT);
@@ -176,6 +200,33 @@
      pthread_mutex_unlock(&g_inviteMutex);
  }
  
+ /* === v5 ADD >>> */
+ void startGame(Invitation *inv)
+ {
+     pthread_mutex_lock(&g_gameMutex);
+     for (int g=0; g<MAX_GAMES; g++)
+         if (!g_games[g].active)
+         {
+             Game *gm = &g_games[g];
+             gm->active = 1;
+             strcpy(gm->players[0], inv->inviter);
+             gm->numPlayers = 1;
+             for (int i=0;i<inv->numInvitees;i++)
+                 strcpy(gm->players[gm->numPlayers++], inv->invitees[i]);
+             break;
+         }
+     pthread_mutex_unlock(&g_gameMutex);
+ }
+ int findGameByPlayer(const char *u)
+ {
+     for (int g=0; g<MAX_GAMES; g++)
+         if (g_games[g].active)
+             for (int p=0; p<g_games[g].numPlayers; p++)
+                 if (strcmp(g_games[g].players[p],u)==0) return g;
+     return -1;
+ }
+ /* <<< v5 ADD === */
+ 
  void handleInviteAnswer(const char *inviter, const char *invitee,
                          int accepted)
  {
@@ -199,17 +250,16 @@
      }
  
      if (!allAnswered)
-     {
-         pthread_mutex_unlock(&g_inviteMutex);
-         return;
-     }
+     { pthread_mutex_unlock(&g_inviteMutex); return; }
  
      /* everyone answered -> broadcast result and free slot */
      char msg[BUFFER_SIZE];
      snprintf(msg, sizeof(msg), "INVITE_RESULT:%s:%s\n",
               inv->inviter, anyRejected ? "REJECTED" : "ACCEPTED");
  
-     inv->active = 0;      /* free slot                    */
+     if (!anyRejected) startGame(inv);           /* === v5 ADD  */
+ 
+     inv->active = 0;                            /* free slot    */
      pthread_mutex_unlock(&g_inviteMutex);
  
      broadcastMessage(msg);
@@ -230,7 +280,11 @@
  {
      pthread_mutex_lock(&g_clientsMutex);
      if (g_clientCount < MAX_CLIENTS)
-         g_clientSockets[g_clientCount++] = client_socket;
+     {
+         g_clientSockets[g_clientCount] = client_socket;
+         /* === v5 ADD >>> */ g_socketUsers[g_clientCount][0]='\0'; /* <<< v5 ADD === */
+         g_clientCount++;
+     }
      pthread_mutex_unlock(&g_clientsMutex);
  }
  
@@ -241,12 +295,36 @@
          if (g_clientSockets[i] == client_socket)
          {
              for (int j = i; j < g_clientCount - 1; j++)
+             {
                  g_clientSockets[j] = g_clientSockets[j + 1];
+                 /* === v5 ADD >>> */ strcpy(g_socketUsers[j], g_socketUsers[j+1]);
+                 /* <<< v5 ADD === */
+             }
              g_clientCount--;
              break;
          }
      pthread_mutex_unlock(&g_clientsMutex);
  }
+ 
+ /* === v5 ADD >>> */
+ void setSocketUsername(int sock,const char *u)
+ {
+     pthread_mutex_lock(&g_clientsMutex);
+     for (int i=0;i<g_clientCount;i++)
+         if (g_clientSockets[i]==sock)
+         { strncpy(g_socketUsers[i],u,USERNAME_LEN-1); break; }
+     pthread_mutex_unlock(&g_clientsMutex);
+ }
+ int socketFromUsername(const char *u)
+ {
+     pthread_mutex_lock(&g_clientsMutex);
+     for (int i=0;i<g_clientCount;i++)
+         if (strcmp(g_socketUsers[i],u)==0)
+         { int s=g_clientSockets[i]; pthread_mutex_unlock(&g_clientsMutex); return s; }
+     pthread_mutex_unlock(&g_clientsMutex);
+     return -1;
+ }
+ /* <<< v5 ADD === */
  
  void broadcastPlayersList(void)
  {
@@ -351,6 +429,8 @@
                  loginUser(conn, u, p, client_socket, currentUser, &loggedIn);
              else
                  write(client_socket, "Missing parameters for LOGIN\n", 29);
+ 
+             if (loggedIn) setSocketUsername(client_socket, currentUser);  /* v5 */
          }
          else if (strcmp(command, "LOGOUT") == 0)
          {
@@ -387,10 +467,59 @@
              int accepted = (strcmp(resp, "ACCEPT") == 0);
              handleInviteAnswer(inviter, currentUser, accepted);
          }
+ 
+         /* === v5 ADD >>>  CHAT & MOVE  ---------------------- */
+         else if (strcmp(command,"CHAT")==0 && loggedIn)
+         {
+             char *body = strtok(NULL,"");
+             if (!body) continue;
+             int gid = findGameByPlayer(currentUser);
+             if (gid==-1) continue;
+ 
+             char pkt[BUFFER_SIZE];
+             snprintf(pkt,sizeof(pkt),"CHAT_MSG:%s:%s\n",currentUser,body);
+ 
+             pthread_mutex_lock(&g_gameMutex);
+             for (int p=0;p<g_games[gid].numPlayers;p++)
+             {
+                 int dst=socketFromUsername(g_games[gid].players[p]);
+                 if (dst!=-1) write(dst,pkt,strlen(pkt));
+             }
+             pthread_mutex_unlock(&g_gameMutex);
+         }
+         else if (strcmp(command,"MOVE")==0 && loggedIn)
+         {
+             char *x=strtok(NULL,":");
+             char *y=strtok(NULL,":");
+             if(!x||!y)continue;
+             int gid=findGameByPlayer(currentUser);
+             if(gid==-1)continue;
+ 
+             char pkt[BUFFER_SIZE];
+             snprintf(pkt,sizeof(pkt),"MOVE:%s:%s:%s\n",currentUser,x,y);
+ 
+             pthread_mutex_lock(&g_gameMutex);
+             for(int p=0;p<g_games[gid].numPlayers;p++)
+             {
+                 int dst=socketFromUsername(g_games[gid].players[p]);
+                 if(dst!=-1) write(dst,pkt,strlen(pkt));
+             }
+             pthread_mutex_unlock(&g_gameMutex);
+         }
+         /* <<< v5 ADD === */
+ 
          else
              write(client_socket, "Unknown command\n", 16);
      }
  }
+ 
+ /* ==================================================================
+  *                DATABASE  – REGISTER / LOGIN  (inchangé)
+  * ================================================================== */
+ /* — vos fonctions registerUser, loginUser, queryOne, queryTwo, queryThree
+    sont strictement les mêmes qu’en v4 : recopiez‑les ou laissez‑les comme
+    elles sont dans votre projet. — */
+ 
  
  /* ==================================================================
   *                DATABASE  – REGISTER  /  LOGIN

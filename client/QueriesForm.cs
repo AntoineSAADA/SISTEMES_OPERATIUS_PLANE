@@ -1,37 +1,52 @@
-//  QueriesForm.cs – v4 (invitation support, layout corrigé, compatible C# 7.x)
+/* ===========================================================
+ *  File :  QueriesForm.cs     (client v5)
+ * =========================================================== */
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace MultiplayerGameClient
 {
     public class QueriesForm : Form
     {
-        private ListBox lstPlayers;
-        private TextBox txtResults;
-        private Button  btnQuery1, btnQuery2, btnQuery3, btnInvite, btnLogout;
+        /* ----------  UI  ---------- */
+        private ListBox   lstPlayers;
+        private TextBox   txtResults;
+        private Button    btnQuery1, btnQuery2, btnQuery3;
+        private Button    btnInvite, btnLogout;
 
-        private readonly TcpClient    client;
+        /* ----------  réseau / synchro  ---------- */
+        private readonly TcpClient  client;
         private readonly StreamReader reader;
         private readonly StreamWriter writer;
-        private Thread   listenThread;
-        private volatile bool keepListening = true;
+
+        private readonly BlockingCollection<string> inbox =
+            new BlockingCollection<string>();
+
+        private Thread listenThread;
         private readonly string username;
 
-        public QueriesForm(TcpClient c, StreamReader r, StreamWriter w, string user)
+        public QueriesForm(TcpClient c, StreamReader r,
+                           StreamWriter w, string user)
         {
-            client = c; reader = r; writer = w; username = user;
+            client   = c; reader = r; writer = w;
+            username = user;
+
             InitializeComponent();
             StartListening();
+            StartUiConsumer();
         }
 
+        /* =======================  IHM  ======================= */
         private void InitializeComponent()
         {
-            Text           = "Game Interface";
+            Text           = "Game lobby";
             Size           = new Size(900, 520);
             FormBorderStyle= FormBorderStyle.FixedDialog;
             MaximizeBox    = false;
@@ -46,148 +61,159 @@ namespace MultiplayerGameClient
             };
 
             lstPlayers = new ListBox {
-                Location = new Point(20, 60),
-                Size     = new Size(200, 380),
+                Location      = new Point(20, 60),
+                Size          = new Size(200, 380),
                 SelectionMode = SelectionMode.MultiExtended
             };
 
             txtResults = new TextBox {
-                Location = new Point(240, 60),
-                Size     = new Size(620, 300),
+                Location  = new Point(240, 60),
+                Size      = new Size(620, 300),
                 Multiline = true,
-                ScrollBars = ScrollBars.Vertical
+                ScrollBars= ScrollBars.Vertical
             };
 
             int yButtons = 380;
+            btnQuery1 = MakeBtn("QUERY1", new Point(240, yButtons),
+                                (s,e)=> writer.WriteLine("QUERY1"));
+            btnQuery2 = MakeBtn("QUERY2", new Point(360, yButtons),
+                                (s,e)=> writer.WriteLine("QUERY2"));
+            btnQuery3 = MakeBtn("QUERY3", new Point(480, yButtons),
+                                (s,e)=> writer.WriteLine("QUERY3"));
+            btnInvite = MakeBtn("INVITE", new Point(600, yButtons),
+                                btnInvite_Click);
+            btnLogout = MakeBtn("LOGOUT", new Point(720, yButtons),
+                                btnLogout_Click);
 
-            btnQuery1 = new Button {
-                Text = "QUERY1", Location = new Point(240, yButtons), Size = new Size(100, 40)
-            }; btnQuery1.Click += (s, e) => SendCommand("QUERY1");
-
-            btnQuery2 = new Button {
-                Text = "QUERY2", Location = new Point(360, yButtons), Size = new Size(100, 40)
-            }; btnQuery2.Click += (s, e) => SendCommand("QUERY2");
-
-            btnQuery3 = new Button {
-                Text = "QUERY3", Location = new Point(480, yButtons), Size = new Size(100, 40)
-            }; btnQuery3.Click += (s, e) => SendCommand("QUERY3");
-
-            btnInvite = new Button {
-                Text = "INVITE", Location = new Point(600, yButtons), Size = new Size(100, 40)
-            }; btnInvite.Click += btnInvite_Click;
-
-            btnLogout = new Button {
-                Text = "LOGOUT", Location = new Point(720, yButtons), Size = new Size(100, 40)
-            }; btnLogout.Click += btnLogout_Click;
-
-            Controls.AddRange(new Control[] {
+            Controls.AddRange(new Control[]{
                 lblTitle, lstPlayers, txtResults,
-                btnQuery1, btnQuery2, btnQuery3, btnInvite, btnLogout
-            });
+                btnQuery1, btnQuery2, btnQuery3,
+                btnInvite, btnLogout });
         }
+        // ── QueriesForm.cs  ──────────────────────────────────────────────
+// remplacez entièrement la méthode MakeBtn par la version ci‑dessous
+private static Button MakeBtn(string txt, Point loc, EventHandler handler)
+{
+    var btn = new Button
+    {
+        Text      = txt,
+        Location  = loc,
+        Size      = new Size(100, 40)
+    };
+    if (handler != null)
+        btn.Click += handler;
+    return btn;
+}
 
-        private void SendCommand(string cmd) { try { writer.WriteLine(cmd); } catch { } }
 
-        /* ----------  network listener ---------- */
+        /* ============  réseau : réception asynchrone  ============ */
         private void StartListening()
         {
-            listenThread = new Thread(ListenLoop) { IsBackground = true };
+            listenThread = new Thread(() =>
+            {
+                try {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                        inbox.Add(line);        // pas d’accès UI ici
+                }
+                catch { /* socket fermé */ }
+                finally { inbox.CompleteAdding(); }
+            });
+            listenThread.IsBackground = true;
             listenThread.Start();
         }
-        private void ListenLoop()
+        /* =================  consommation sur thread UI  ================= */
+        private void StartUiConsumer()
         {
-            try {
-                string line;
-                while (keepListening && (line = reader.ReadLine()) != null) {
-                    if (line.StartsWith("UPDATE_LIST:")) {
-                        string[] players = line.Substring(12)
-                                               .Split(new[] { ',' },
-                                                      StringSplitOptions.RemoveEmptyEntries);
-                        BeginInvoke((MethodInvoker)delegate {
-                            lstPlayers.Items.Clear();
-                            foreach (string p in players) lstPlayers.Items.Add(p.Trim());
-                        });
-                    }
-                    else if (line.StartsWith("QUERY")) {
-                        BeginInvoke((MethodInvoker)(() => txtResults.Text = line));
-                    }
-                    else if (line.StartsWith("INVITE_REQUEST:"))
-                        HandleInviteRequest(line.Substring(15));
-                    else if (line.StartsWith("INVITE_RESULT:"))
-                        HandleInviteResult(line.Substring(14));
-                }
+            var uiCtx = SynchronizationContext.Current;
+            Task.Run(() =>
+            {
+                foreach (var msg in inbox.GetConsumingEnumerable())
+                    uiCtx.Post(_ => Dispatch(msg), null);
+            });
+        }
+        private void Dispatch(string line)
+        {
+            if (line.StartsWith("UPDATE_LIST:"))
+            {
+                var names = line.Substring(12)
+                                .Split(new[]{','},
+                                       StringSplitOptions.RemoveEmptyEntries);
+                lstPlayers.Items.Clear();
+                foreach (var n in names) lstPlayers.Items.Add(n.Trim());
             }
-            catch (IOException) { /* connexion coupée */ }
+            else if (line.StartsWith("QUERY"))
+                txtResults.Text = line;
+            else if (line.StartsWith("INVITE_REQUEST:"))
+                HandleInviteRequest(line.Substring(15));
+            else if (line.StartsWith("INVITE_RESULT:"))
+                HandleInviteResult(line.Substring(14));
+            else if (line.StartsWith("CHAT_MSG:")  ||
+                     line.StartsWith("MOVE:"))
+            {
+                // redirection vers GameForm (si ouverte)
+                GameForm.Feed(line);
+            }
         }
 
-        /* ----------  invitation handlers ---------- */
+        /* ----------------  invitations  ---------------- */
         private void HandleInviteRequest(string payload)
         {
-            // format "inviter:invitee1,invitee2,…"
-            string[] parts = payload.Split(':');
-            if (parts.Length < 2) return;
-            string inviter = parts[0];
-            string[] invites = parts[1].Split(',');
+            var p    = payload.Split(':');
+            if (p.Length<2) return;
+            var inviter  = p[0];
+            var invitees = p[1].Split(',');
 
-            if (!Array.Exists(invites, p => p == username)) return;
+            if (Array.IndexOf(invitees, username) == -1) return;
 
-            BeginInvoke((MethodInvoker)delegate {
-                DialogResult dlg = MessageBox.Show(
-                    $"{inviter} invites you to play.\nAccept?",
-                    "Game invitation",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            var dr = MessageBox.Show(
+                $"{inviter} invites you to play.\nAccept ?",
+                "Invitation", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
 
-                string reply = dlg == DialogResult.Yes ? "ACCEPT" : "REJECT";
-                try { writer.WriteLine($"INVITE_RESP:{inviter}:{reply}"); } catch { }
-            });
+            writer.WriteLine($"INVITE_RESP:{inviter}:{(dr==DialogResult.Yes?"ACCEPT":"REJECT")}");
         }
         private void HandleInviteResult(string payload)
         {
-            // format "inviter:ACCEPTED/REJECTED"
-            string[] parts = payload.Split(':');
-            if (parts.Length < 2) return;
-            string inviter = parts[0], result = parts[1];
+            var p = payload.Split(':');
+            if (p.Length<2) return;
+            var inviter = p[0]; var res = p[1];
 
-            BeginInvoke((MethodInvoker)delegate {
-                MessageBox.Show(
-                    result == "ACCEPTED"
-                        ? $"Game with {inviter} will start – everyone accepted!"
-                        : $"Game with {inviter} was cancelled – someone declined.",
-                    "Invitation result",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-            });
+            if (res=="ACCEPTED")
+            {
+                MessageBox.Show("Game starting !", "Info");
+                var gf = new GameForm(writer, inbox, username);
+                gf.Show();
+                Hide();
+            }
+            else
+                MessageBox.Show("Invitation cancelled.", "Info");
         }
 
-        /* ----------  UI events ---------- */
+        /* ----------------  UI : boutons  ---------------- */
         private void btnInvite_Click(object sender, EventArgs e)
         {
-            if (lstPlayers.SelectedItems.Count == 0) {
+            if (lstPlayers.SelectedItems.Count==0)
+            {
                 MessageBox.Show("Select at least one player."); return;
             }
-            var targets = new List<string>();
-            foreach (var item in lstPlayers.SelectedItems) {
-                string p = item.ToString();
-                if (p != username) targets.Add(p);
+            var list = new List<string>();
+            foreach (var o in lstPlayers.SelectedItems)
+                if (o.ToString()!=username) list.Add(o.ToString());
+            if (list.Count==0)
+            {
+                MessageBox.Show("You cannot invite only yourself."); return;
             }
-            if (targets.Count == 0) {
-                MessageBox.Show("You can’t invite only yourself."); return;
-            }
-            string csv = string.Join(",", targets);
-            try { writer.WriteLine($"INVITE:{csv}"); } catch { }
+            writer.WriteLine($"INVITE:{string.Join(",",list)}");
             MessageBox.Show("Invitation sent.");
         }
-
-        private void btnLogout_Click(object sender, EventArgs e)
+        private void btnLogout_Click(object s, EventArgs e)
         {
-            keepListening = false;
-            SendCommand("LOGOUT");
+            writer.WriteLine("LOGOUT");
             client.Close();
             Application.Exit();
         }
         protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            keepListening = false; client.Close();
-            base.OnFormClosing(e);
-        }
+        { client.Close(); base.OnFormClosing(e); }
     }
 }
