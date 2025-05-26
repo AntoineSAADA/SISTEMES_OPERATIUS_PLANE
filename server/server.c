@@ -506,8 +506,32 @@
              }
              pthread_mutex_unlock(&g_gameMutex);
          }
-         /* <<< v5 ADD === */
- 
+
+         /* ----------  FIRE  ------------ */
+else if (strcmp(command,"FIRE")==0 && loggedIn)
+{
+    char *x  = strtok(NULL,":");
+    char *y  = strtok(NULL,":");
+    char *dx = strtok(NULL,":");
+    char *dy = strtok(NULL,":");
+    if (!x||!y||!dx||!dy) continue;
+
+    int gid = findGameByPlayer(currentUser);
+    if (gid==-1) continue;
+
+    char pkt[BUFFER_SIZE];
+    snprintf(pkt,sizeof(pkt),"FIRE:%s:%s:%s:%s:%s\n",
+             currentUser,x,y,dx,dy);
+
+    pthread_mutex_lock(&g_gameMutex);
+    for(int p=0;p<g_games[gid].numPlayers;p++)
+    {
+        int dst = socketFromUsername(g_games[gid].players[p]);
+        if(dst!=-1) write(dst,pkt,strlen(pkt));
+    }
+    pthread_mutex_unlock(&g_gameMutex);
+}
+
          else
              write(client_socket, "Unknown command\n", 16);
      }
@@ -683,4 +707,3 @@
      snprintf(msg, sizeof(msg), "QUERY3_RESULT:%s\n", response);
      write(client_socket, msg, strlen(msg));
  }
- 
