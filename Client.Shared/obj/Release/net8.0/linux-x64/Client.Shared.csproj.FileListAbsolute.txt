@@ -1,0 +1,12 @@
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/bin/Release/net8.0/linux-x64/Client.Shared.deps.json
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/bin/Release/net8.0/linux-x64/Client.Shared.dll
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/bin/Release/net8.0/linux-x64/Client.Shared.pdb
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/Release/net8.0/linux-x64/Client.Shared.GeneratedMSBuildEditorConfig.editorconfig
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/Release/net8.0/linux-x64/Client.Shared.AssemblyInfoInputs.cache
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/Release/net8.0/linux-x64/Client.Shared.AssemblyInfo.cs
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/Release/net8.0/linux-x64/Client.Shared.csproj.CoreCompileInputs.cache
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/Release/net8.0/linux-x64/Client.Shared.sourcelink.json
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/Release/net8.0/linux-x64/Client.Shared.dll
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/Release/net8.0/linux-x64/refint/Client.Shared.dll
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/Release/net8.0/linux-x64/Client.Shared.pdb
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/Release/net8.0/linux-x64/ref/Client.Shared.dll

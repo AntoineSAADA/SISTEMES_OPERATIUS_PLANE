@@ -1,0 +1,10 @@
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/Client.Game
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/Content/DefaultFont.xnb
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/Client.Game.dll
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/Client.Game.deps.json
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/Client.Game.runtimeconfig.json
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/Client.Game.pdb
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/MonoGame.Framework.dll
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/NVorbis.dll
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/libopenal.so
+/home/jinger/Documents/UPC/SO/refonte_code/Client.Game/bin/Release/net8.0/linux-x64/publish/libSDL2-2.0.so.0
