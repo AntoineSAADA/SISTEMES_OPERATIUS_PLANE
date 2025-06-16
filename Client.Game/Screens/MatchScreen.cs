@@ -13,23 +13,28 @@ namespace ClientGame
     {
         private readonly DogfightGame  game;
         private readonly NetworkClient net;
-        private readonly string        me;
+        private readonly string        me;          // pseudo du joueur local
 
+        /* --------------- Ressources --------------- */
         private SpriteFont font;
-
         private Texture2D background;
         private Texture2D planeTexture, plane2Texture;
         private Texture2D projectileTexture, explosionTexture;
         private Texture2D pixel;
 
+        /* --------------- Constantes rendu ---------- */
         private const float PlaneRenderSize      = 64f;
         private const float ProjectileRenderSize = 16f;
         private const float PlaneSpeed           = 200f;
 
-        private Dictionary<int, Vector2>    projectiles     = new();
-        private Dictionary<string, Vector2> playerPositions = new();
-        private Dictionary<string, int>     playerHealth    = new();
-        private Dictionary<string, int>     prevHealth      = new();
+        /* --------------- État runtime ------------- */
+        private Dictionary<int, Vector2> projectiles = new();
+        private readonly Dictionary<string, Vector2> playerPositions =
+                new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int>     playerHealth =
+                new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int>     prevHealth =
+                new(StringComparer.OrdinalIgnoreCase);
 
         private bool   stateReceived = false;
         private bool   gameOver      = false;
@@ -102,16 +107,18 @@ namespace ClientGame
                 {
                     var winner = msg.Split(':', 2)[1];
                     gameOver   = true;
-                    gameOverText = winner == me
-                        ? "You win! Press Enter to return to lobby."
-                        : "You died! Press Enter to return to lobby.";
+                    gameOverText = string.Equals(winner, me, StringComparison.OrdinalIgnoreCase)
+                                   ? "You win! Press Enter to return to lobby."
+                                   : "You died! Press Enter to return to lobby.";
                 }
             }
 
             if (!stateReceived) { prevKb = kb; return; }
 
             /* -------- Détection locale (secours) -------- */
-            if (!gameOver && playerHealth.TryGetValue(me, out var hpMe) && hpMe <= 0)
+            if (!gameOver &&
+                playerHealth.TryGetValue(me, out var hpMe) &&
+                hpMe <= 0)
             {
                 gameOver   = true;
                 gameOverText = "You died! Press Enter to return to lobby.";
@@ -119,7 +126,8 @@ namespace ClientGame
             else if (!gameOver)
             {
                 foreach (var kv in playerHealth)
-                    if (kv.Key != me && kv.Value <= 0)
+                    if (!string.Equals(kv.Key, me, StringComparison.OrdinalIgnoreCase) &&
+                        kv.Value <= 0)
                     {
                         gameOver   = true;
                         gameOverText = "You win! Press Enter to return to lobby.";
@@ -138,10 +146,7 @@ namespace ClientGame
                     projectiles.Clear();
                     stateReceived = false;
 
-                    /* Vide les messages restants pour éviter les re-triggers */
-                    net.ClearInbox();
-
-                    /* Retour lobby */
+                    net.ClearInbox();                 // évite les re-triggers
                     game.ChangeScreen(new LobbyScreen(game, me, net));
                 }
 
@@ -156,7 +161,8 @@ namespace ClientGame
             if (kb.IsKeyDown(Keys.Left))  dir.X -= 1;
             if (kb.IsKeyDown(Keys.Right)) dir.X += 1;
 
-            if (dir != Vector2.Zero && playerPositions.TryGetValue(me, out var myPos))
+            if (dir != Vector2.Zero &&
+                playerPositions.TryGetValue(me, out var myPos))
             {
                 dir.Normalize();
                 myPos += dir * PlaneSpeed * dt;
@@ -199,9 +205,10 @@ namespace ClientGame
                 var name = kv.Key;
                 var pos  = kv.Value;
 
-                var tex  = (name == me)
-                           ? (isRightPlayer ? plane2Texture : planeTexture)
-                           : (isRightPlayer ? planeTexture : plane2Texture);
+                bool isMe = string.Equals(name, me, StringComparison.OrdinalIgnoreCase);
+                var  tex  = isMe
+                            ? (isRightPlayer ? plane2Texture : planeTexture)
+                            : (isRightPlayer ? planeTexture : plane2Texture);
 
                 sb.Draw(tex,
                         new Rectangle((int)(pos.X - size / 2),
@@ -270,7 +277,7 @@ namespace ClientGame
             projectiles = newProj;
 
             /* HP */
-            var newHP = new Dictionary<string, int>();
+            var newHP = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             if (!string.IsNullOrEmpty(hpPart))
                 foreach (var e in hpPart.Split(',', StringSplitOptions.RemoveEmptyEntries))
                 {
@@ -278,7 +285,8 @@ namespace ClientGame
                     if (kv.Length == 2 && int.TryParse(kv[1], out var hp))
                         newHP[kv[0]] = hp;
                 }
-            playerHealth = newHP;
+            playerHealth.Clear();
+            foreach (var kv in newHP) playerHealth[kv.Key] = kv.Value;
 
             /* positions */
             if (!string.IsNullOrEmpty(posPart))

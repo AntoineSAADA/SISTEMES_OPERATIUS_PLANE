@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
@@ -15,8 +14,9 @@ namespace ClientGame
         private readonly NetworkClient net;
         private readonly string        me;
 
+        /* ---------- UI / état ---------- */
         private SpriteFont  font;
-        private Texture2D   pixel;
+        private Texture2D   pixel;                 // texture blanche 1×1
         private List<string> players = new();
         private int         selectedIndex = 0;
 
@@ -24,67 +24,80 @@ namespace ClientGame
         private MouseState    prevMouse = Mouse.GetState();
         private bool inviteLatch = false;
 
-        private Rectangle btnQuery1;
-        private Rectangle btnQuery2;
-        private Rectangle btnQuery3;
+        private Rectangle btnQuery1, btnQuery2, btnQuery3;
 
         private bool   showingPrompt = false;
         private string inviter       = "";
 
-        private string queryResult = string.Empty;
+        private string queryResult   = string.Empty;
 
+        /* ---------- Réception réseau ---------- */
         private readonly ConcurrentQueue<string> queue = new();
 
-        public LobbyScreen(DogfightGame game, string me, NetworkClient net)
+        public LobbyScreen(DogfightGame g, string me, NetworkClient n)
         {
-            this.game = game;
-            this.me   = me;
-            this.net  = net;
+            game = g;
+            this.me = me;
+            net = n;
         }
 
         /* =========================================================
                                LOAD
-           =========================================================*/
+        =========================================================*/
         public void LoadContent(ContentManager content)
         {
             font = content.Load<SpriteFont>("DefaultFont");
-
-            pixel = new Texture2D(game.GraphicsDevice, 1, 1);
-            pixel.SetData(new[] { Color.White });
+            CreatePixel();                              // première création
 
             btnQuery1 = MakeButtonRect("Query1", new Vector2(50, 380));
             btnQuery2 = MakeButtonRect("Query2", new Vector2(200, 380));
             btnQuery3 = MakeButtonRect("Query3", new Vector2(350, 380));
 
+            /* vide la boîte centrale pour ne rien rater */
             while (net.Inbox.TryTake(out var line))
                 queue.Enqueue(line);
-            net.Subscribe(queue);          // ← remplace l’ancien StartMessagePump
-            /* Demande instantanée de la liste si aucun changement n’a eu lieu */
-            net.SendLine("LIST");   
+
+            net.Subscribe(queue);
+            net.SendLine("LIST");          // demande immédiate de la liste
         }
 
-        private Rectangle MakeButtonRect(string text, Vector2 position)
+        /* ---------------------------------------------------------
+                            Helpers init
+        ---------------------------------------------------------*/
+        private void CreatePixel()                         // crée la 1×1
         {
-            var size = font.MeasureString(text);
-            return new Rectangle((int)position.X,
-                                 (int)position.Y,
-                                 (int)size.X + 20,
-                                 (int)size.Y + 10);
+            pixel = new Texture2D(game.GraphicsDevice, 1, 1);
+            pixel.SetData(new[] { Color.White });
+        }
+
+        private void EnsurePixelAlive(SpriteBatch sb)      // recrée si null/disposed
+        {
+            if (pixel == null || pixel.IsDisposed)
+            {
+                pixel = new Texture2D(sb.GraphicsDevice, 1, 1);
+                pixel.SetData(new[] { Color.White });
+            }
+        }
+
+        private Rectangle MakeButtonRect(string text, Vector2 pos)
+        {
+            var sz = font.MeasureString(text);
+            return new Rectangle((int)pos.X, (int)pos.Y,
+                                 (int)sz.X + 20, (int)sz.Y + 10);
         }
 
         /* =========================================================
                                UPDATE
-           =========================================================*/
+        =========================================================*/
         public void Update(GameTime _)
         {
             var kb    = Keyboard.GetState();
             var mouse = Mouse.GetState();
 
-            /* --- Lecture messages réseau --- */
+            /* lecture messages réseau (inchangé)… */
             while (queue.TryDequeue(out var raw))
             {
                 var msg = raw.Trim();
-
                 if (msg.StartsWith("UPDATE_LIST:", StringComparison.OrdinalIgnoreCase))
                 {
                     var list = msg["UPDATE_LIST:".Length..]
@@ -99,7 +112,8 @@ namespace ClientGame
                     var parts   = payload.Split(':', 2);
                     var targets = parts[1].Split(',', StringSplitOptions.RemoveEmptyEntries);
 
-                    if (Array.Exists(targets, x => x == me))
+                    if (Array.Exists(targets,
+                          x => string.Equals(x, me, StringComparison.OrdinalIgnoreCase)))
                     {
                         inviter       = parts[0];
                         showingPrompt = true;
@@ -108,7 +122,8 @@ namespace ClientGame
                 else if (msg.StartsWith("INVITE_RESULT:", StringComparison.OrdinalIgnoreCase))
                 {
                     var parts = msg.Split(':', 3);
-                    if (parts.Length == 3 && parts[2].Equals("ACCEPTED", StringComparison.OrdinalIgnoreCase))
+                    if (parts.Length == 3 &&
+                        parts[2].Equals("ACCEPTED", StringComparison.OrdinalIgnoreCase))
                     {
                         game.ChangeScreen(new MatchScreen(game, me, net));
                         prevKb    = kb;
@@ -124,7 +139,8 @@ namespace ClientGame
                     queryResult = msg["QUERY3_RESULT:".Length..];
             }
 
-            /* --- Invite popup (Y / N) --- */
+            /* popup, navigation, invitation, boutons — inchangés */
+            /* … */
             if (showingPrompt)
             {
                 if (IsNewKey(kb, prevKb, Keys.Y))
@@ -142,23 +158,22 @@ namespace ClientGame
                 return;
             }
 
-            /* --- Navigation liste joueurs --- */
             if (IsNewKey(kb, prevKb, Keys.Down) && players.Count > 0)
                 selectedIndex = (selectedIndex + 1) % players.Count;
             if (IsNewKey(kb, prevKb, Keys.Up) && players.Count > 0)
                 selectedIndex = (selectedIndex - 1 + players.Count) % players.Count;
 
-            /* --- Envoi d’une invitation --- */
-            if (!inviteLatch && IsNewKey(kb, prevKb, Keys.Enter) && players.Count > 0)
+            if (!inviteLatch &&
+                IsNewKey(kb, prevKb, Keys.Enter) &&
+                players.Count > 0)
             {
                 var target = players[selectedIndex];
-                if (target != me)
+                if (!string.Equals(target, me, StringComparison.OrdinalIgnoreCase))
                     net.SendLine($"INVITE:{target}");
                 inviteLatch = true;
             }
             if (kb.IsKeyUp(Keys.Enter)) inviteLatch = false;
 
-            /* --- Clic sur les boutons Query --- */
             if (mouse.LeftButton == ButtonState.Pressed &&
                 prevMouse.LeftButton == ButtonState.Released)
             {
@@ -173,12 +188,14 @@ namespace ClientGame
 
         /* =========================================================
                                 DRAW
-           =========================================================*/
+        =========================================================*/
         public void Draw(SpriteBatch sb)
         {
+            EnsurePixelAlive(sb);                  // toujours avant tout rendu
             sb.GraphicsDevice.Clear(Color.CornflowerBlue);
 
-            sb.DrawString(font, $"Lobby - You: {me}", new Vector2(50, 30), Color.White);
+            sb.DrawString(font, $"Lobby - You: {me}",
+                          new Vector2(50, 30), Color.White);
 
             for (int i = 0; i < players.Count; i++)
             {
@@ -202,16 +219,18 @@ namespace ClientGame
         }
 
         /* =========================================================
-                           HELPERS UI
-           =========================================================*/
+                           Helper rendering
+        =========================================================*/
         private void DrawPopup(SpriteBatch sb, string text)
         {
+            EnsurePixelAlive(sb);
+
             var vp         = sb.GraphicsDevice.Viewport;
             float maxWidth = vp.Width * 0.6f;
             float lineH    = font.LineSpacing;
 
-            var lines      = WrapText(text, font, maxWidth);
-            float textW    = 0f;
+            var lines = WrapText(text, font, maxWidth);
+            float textW = 0f;
             foreach (var l in lines)
                 textW = Math.Max(textW, font.MeasureString(l).X);
 
@@ -233,11 +252,36 @@ namespace ClientGame
             }
         }
 
+        private void DrawButton(SpriteBatch sb, Rectangle rect, string text)
+        {
+            EnsurePixelAlive(sb);
+            sb.Draw(pixel, rect, Color.DarkGray);
+
+            var mouse = Mouse.GetState();
+            var col   = rect.Contains(mouse.Position) ? Color.Yellow : Color.White;
+
+            sb.DrawString(font, text,
+                          new Vector2(rect.X + 10, rect.Y + 5), col);
+        }
+
+        private void DrawBorder(SpriteBatch sb, Rectangle r, int t, Color c)
+        {
+            EnsurePixelAlive(sb);
+            sb.Draw(pixel, new Rectangle(r.X, r.Y, r.Width, t), c);
+            sb.Draw(pixel, new Rectangle(r.X, r.Y + r.Height - t, r.Width, t), c);
+            sb.Draw(pixel, new Rectangle(r.X, r.Y, t, r.Height), c);
+            sb.Draw(pixel, new Rectangle(r.X + r.Width - t, r.Y, t, r.Height), c);
+        }
+
+        /* ========================================================= */
+        private static bool IsNewKey(KeyboardState cur, KeyboardState prev, Keys k)
+            => cur.IsKeyDown(k) && !prev.IsKeyDown(k);
+
         private List<string> WrapText(string text, SpriteFont f, float maxLineW)
         {
-            var words  = text.Split(' ');
-            var lines  = new List<string>();
-            var cur    = "";
+            var words = text.Split(' ');
+            var lines = new List<string>();
+            var cur   = "";
 
             foreach (var w in words)
             {
@@ -252,37 +296,5 @@ namespace ClientGame
             if (!string.IsNullOrEmpty(cur)) lines.Add(cur);
             return lines;
         }
-
-        private void DrawButton(SpriteBatch sb, Rectangle rect, string text)
-{
-    /* 1) S’assurer que la texture 1×1 existe */
-    if (pixel == null)
-    {
-        pixel = new Texture2D(sb.GraphicsDevice, 1, 1);
-        pixel.SetData(new[] { Color.White });
-    }
-
-    /* 2) Dessin du fond du bouton */
-    sb.Draw(pixel, rect, Color.DarkGray);
-
-    /* 3) Libellé (change de couleur si la souris survole) */
-    var mouse = Mouse.GetState();
-    var color = rect.Contains(mouse.Position) ? Color.Yellow : Color.White;
-    sb.DrawString(font, text,
-                  new Vector2(rect.X + 10, rect.Y + 5),
-                  color);
-}
-
-
-        private void DrawBorder(SpriteBatch sb, Rectangle rect, int thickness, Color color)
-        {
-            sb.Draw(pixel, new Rectangle(rect.X, rect.Y, rect.Width, thickness), color);
-            sb.Draw(pixel, new Rectangle(rect.X, rect.Y + rect.Height - thickness, rect.Width, thickness), color);
-            sb.Draw(pixel, new Rectangle(rect.X, rect.Y, thickness, rect.Height), color);
-            sb.Draw(pixel, new Rectangle(rect.X + rect.Width - thickness, rect.Y, thickness, rect.Height), color);
-        }
-
-        private static bool IsNewKey(KeyboardState cur, KeyboardState prev, Keys key)
-            => cur.IsKeyDown(key) && !prev.IsKeyDown(key);
     }
 }
