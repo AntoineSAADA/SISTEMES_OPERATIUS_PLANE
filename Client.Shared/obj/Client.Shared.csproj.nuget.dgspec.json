@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/Client.Shared.csproj": {}
+    "/home/jinger/Documents/UPC/SO/SISTEMES_OPERATIUS_PLANE/Client.Shared/Client.Shared.csproj": {}
   },
   "projects": {
-    "/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/Client.Shared.csproj": {
+    "/home/jinger/Documents/UPC/SO/SISTEMES_OPERATIUS_PLANE/Client.Shared/Client.Shared.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/Client.Shared.csproj",
+        "projectUniqueName": "/home/jinger/Documents/UPC/SO/SISTEMES_OPERATIUS_PLANE/Client.Shared/Client.Shared.csproj",
         "projectName": "Client.Shared",
-        "projectPath": "/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/Client.Shared.csproj",
+        "projectPath": "/home/jinger/Documents/UPC/SO/SISTEMES_OPERATIUS_PLANE/Client.Shared/Client.Shared.csproj",
         "packagesPath": "/home/jinger/.nuget/packages/",
-        "outputPath": "/home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/obj/",
+        "outputPath": "/home/jinger/Documents/UPC/SO/SISTEMES_OPERATIUS_PLANE/Client.Shared/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/home/jinger/.nuget/NuGet/NuGet.Config"
@@ -53,12 +53,27 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Runtime.linux-x64",
+              "version": "[8.0.16, 8.0.16]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Runtime.linux-x64",
+              "version": "[8.0.16, 8.0.16]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
             }
           },
           "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.410/PortableRuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "linux-x64": {
+          "#import": []
         }
       }
     }

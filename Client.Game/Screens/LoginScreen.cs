@@ -11,7 +11,7 @@ namespace ClientGame
     public class LoginScreen : IScreen
     {
         /* ⇢ Adresse du serveur – change-la ici si besoin */
-        private const string ServerIP = "192.168.1.63";
+        private const string ServerIP = "172.20.10.2";
         private const int    ServerPort = 12345;
 
         private readonly DogfightGame game;

@@ -8,6 +8,6 @@ build_property.PlatformNeutralAssembly =
 build_property.EnforceExtendedAnalyzerRules = 
 build_property._SupportedPlatformList = Linux,macOS,Windows
 build_property.RootNamespace = Client.Shared
-build_property.ProjectDir = /home/jinger/Documents/UPC/SO/refonte_code/Client.Shared/
+build_property.ProjectDir = /home/jinger/Documents/UPC/SO/SISTEMES_OPERATIUS_PLANE/Client.Shared/
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
